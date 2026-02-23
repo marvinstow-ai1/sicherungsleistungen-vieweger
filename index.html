@@ -190,10 +190,13 @@
 
       <div id="chef-employees" class="tab-content">
         <div class="card">
-          <div class="flex-between mb-3">
-            <div class="card-title" style="border:none;padding:0;margin:0">👥 Mitarbeiter verwalten</div>
-            <button class="btn btn-primary" onclick="App.openEmployeeModal()">➕ Neu</button>
-          </div>
+         <div class="flex-between mb-3">
+  <div class="card-title" style="border:none;padding:0;margin:0">👥 Mitarbeiter verwalten</div>
+  <button class="btn btn-primary" onclick="App.openEmployeeModal()">➕ Neu</button>
+</div>
+<div class="mb-3">
+  <input type="text" id="employeeSearch" class="form-control" placeholder="🔍 Name, ID oder Funktion suchen…" oninput="App.renderEmployeeTable()"/>
+</div>
           <div class="table-wrapper"><table id="employeeTable"><thead><tr><th>Name</th><th>ID</th><th>Funktion</th><th>Stadt</th><th>Telefon</th><th>Aktionen</th></tr></thead><tbody></tbody></table></div>
         </div>
       </div>
@@ -202,8 +205,12 @@
         <div class="card">
           <div class="flex-between mb-3">
             <div class="card-title" style="border:none;padding:0;margin:0">📅 Schichten planen</div>
-            <button class="btn btn-primary" onclick="App.openShiftModal()">➕ Schicht</button>
+            <button class="btn btn-primary" onclick="App.openShiftModal()">➕ Einzeln</button>
+<button class="btn btn-outline" onclick="App.openBulkShiftModal()">📅 Bulk</button>
           </div>
+         <div class="mb-3">
+  <input type="text" id="shiftSearch" class="form-control" placeholder="🔍 Bezeichnung, Stadt oder Einsatzort suchen…" oninput="App.renderShiftsTable()"/>
+</div>
           <div class="form-row mb-3">
             <div><label class="form-label">Mitarbeiter</label><select id="shiftFilterEmployee" class="form-control" onchange="App.renderShiftsTable()"><option value="">Alle</option></select></div>
             <div><label class="form-label">Monat</label><input type="month" id="shiftFilterMonth" class="form-control" onchange="App.renderShiftsTable()"/></div>
@@ -441,6 +448,50 @@
   </div>
 </div>
 
+  <div id="bulkShiftModal" class="modal-overlay hidden">
+  <div class="modal">
+    <button class="modal-close" onclick="App.closeModal('bulkShiftModal')">✕</button>
+    <div class="modal-title">📅 Schichten Bulk-Erstellen</div>
+    <div class="alert alert-info">Erstellt dieselbe Schicht für jeden Tag im gewählten Zeitraum.</div>
+    <div class="form-group"><label class="form-label">Mitarbeiter *</label><select id="bulkEmployee" class="form-control"></select></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Von Datum *</label><input type="date" id="bulkFrom" class="form-control"/></div>
+      <div class="form-group"><label class="form-label">Bis Datum *</label><input type="date" id="bulkTo" class="form-control"/></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Wochentage</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+        <label style="display:flex;align-items:center;gap:4px;font-size:.85rem"><input type="checkbox" id="bulk_mo" checked/> Mo</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:.85rem"><input type="checkbox" id="bulk_di" checked/> Di</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:.85rem"><input type="checkbox" id="bulk_mi" checked/> Mi</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:.85rem"><input type="checkbox" id="bulk_do" checked/> Do</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:.85rem"><input type="checkbox" id="bulk_fr" checked/> Fr</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:.85rem"><input type="checkbox" id="bulk_sa"/> Sa</label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:.85rem"><input type="checkbox" id="bulk_so"/> So</label>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Bezeichnung *</label><input type="text" id="bulkLabel" class="form-control"/></div>
+      <div class="form-group"><label class="form-label">Funktion</label><input type="text" id="bulkFunction" class="form-control"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Von *</label><input type="time" id="bulkTimeFrom" class="form-control"/></div>
+      <div class="form-group"><label class="form-label">Bis *</label><input type="time" id="bulkTimeTo" class="form-control"/></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Stadt</label><input type="text" id="bulkCity" class="form-control"/></div>
+      <div class="form-group"><label class="form-label">Einsatzort</label><input type="text" id="bulkLocation" class="form-control"/></div>
+    </div>
+    <div id="bulkPreview" class="alert alert-info hidden"></div>
+    <div class="flex gap-2 mt-4">
+      <button class="btn btn-outline" onclick="App.previewBulk()">👁️ Vorschau</button>
+      <button class="btn btn-primary" onclick="App.saveBulkShifts()">💾 Alle erstellen</button>
+      <button class="btn btn-outline" onclick="App.closeModal('bulkShiftModal')">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+
 <script>
 // ============================================================
 // ⚙️ SUPABASE KONFIGURATION – HIER EINTRAGEN!
@@ -670,8 +721,16 @@ const App = {
   },
 
   renderEmployeeTable(){
-    const tbody=document.querySelector('#employeeTable tbody'),emps=Cache.employees;
-    if(!emps.length){tbody.innerHTML='<tr><td colspan="6" class="text-center text-muted">Noch keine Mitarbeiter.</td></tr>';return;}
+  const tbody=document.querySelector('#employeeTable tbody');
+  const q=(document.getElementById('employeeSearch')?.value||'').toLowerCase();
+  let emps=Cache.employees;
+  if(q) emps=emps.filter(e=>
+    (e.first_name+' '+e.last_name).toLowerCase().includes(q)||
+    e.employee_id.toLowerCase().includes(q)||
+    (e.function||'').toLowerCase().includes(q)||
+    (e.city||'').toLowerCase().includes(q)
+  );
+  if(!emps.length){tbody.innerHTML='<tr><td colspan="6" class="text-center text-muted">Keine Ergebnisse.</td></tr>';return;}
     tbody.innerHTML=emps.map(e=>`<tr><td><strong>${Utils.empName(e)}</strong></td><td><code>${e.employee_id}</code></td><td>${e.function||'–'}</td><td>${e.city||'–'}</td><td>${e.phone||'–'}</td><td><button class="btn btn-primary btn-sm" onclick="App.openEmployeeModal('${e.id}')">✏️</button> <button class="btn btn-danger btn-sm" onclick="App.deleteEmployee('${e.id}')">🗑️</button></td></tr>`).join('');
   },
 
@@ -708,16 +767,28 @@ const App = {
     await Cache.reload();App.renderEmployeeTable();App.populateSelects();
   },
 
-  renderShiftsTable(){
-    const fe=document.getElementById('shiftFilterEmployee').value,fm=document.getElementById('shiftFilterMonth').value;
-    let shifts=Cache.shifts;
-    if(fe)shifts=shifts.filter(s=>s.employee_id===fe);
-    if(fm)shifts=shifts.filter(s=>s.date.startsWith(fm));
+ renderShiftsTable(){
+  const fe=document.getElementById('shiftFilterEmployee').value,fm=document.getElementById('shiftFilterMonth').value;
+  const q=(document.getElementById('shiftSearch')?.value||'').toLowerCase();
+  let shifts=Cache.shifts;
+  if(fe)shifts=shifts.filter(s=>s.employee_id===fe);
+  if(fm)shifts=shifts.filter(s=>s.date.startsWith(fm));
+  if(q)shifts=shifts.filter(s=>
+    (s.label||'').toLowerCase().includes(q)||
+    (s.city||'').toLowerCase().includes(q)||
+    (s.location||'').toLowerCase().includes(q)||
+    (s.function||'').toLowerCase().includes(q)
+  );
     const tbody=document.querySelector('#shiftsTable tbody');
     if(!shifts.length){tbody.innerHTML='<tr><td colspan="9" class="text-center text-muted">Keine Schichten.</td></tr>';return;}
     tbody.innerHTML=shifts.map(s=>{
       const e=Cache.employees.find(x=>x.id===s.employee_id);
-      return`<tr><td>${e?Utils.empName(e):'–'}</td><td>${Utils.formatDate(s.date)}</td><td>${s.city||'–'}</td><td>${s.location||'–'}</td><td>${s.function||'–'}</td><td>${s.from_time}</td><td>${s.to_time}</td><td><strong>${s.label}</strong></td><td><button class="btn btn-primary btn-sm" onclick="App.openShiftModal('${s.id}')">✏️</button> <button class="btn btn-danger btn-sm" onclick="App.deleteShift('${s.id}')">🗑️</button></td></tr>`;
+      return`<tr><td>${e?Utils.empName(e):'–'}</td><td>${Utils.formatDate(s.date)}</td><td>${s.city||'–'}</td><td>${s.location||'–'}</td><td>${s.function||'–'}</td><td>${s.from_time}</td><td>${s.to_time}</td><td><strong>${s.label}</strong></td><td>
+  <button class="btn btn-primary btn-sm" onclick="App.openShiftModal('${s.id}')">✏️</button>
+  <button class="btn btn-success btn-sm" onclick="App.duplicateShift('${s.id}')">📋</button>
+  <button class="btn btn-danger btn-sm" onclick="App.deleteShift('${s.id}')">🗑️</button>
+</td>
+</tr>`;
     }).join('');
   },
 
@@ -746,6 +817,91 @@ const App = {
     else{await sb.from('shifts').insert(payload);}
     await Cache.reload();App.closeModal('shiftModal');App.renderShiftsTable();
   },
+
+  async duplicateShift(id){
+  const s=Cache.shifts.find(x=>x.id===id);
+  if(!s)return;
+  const payload={
+    employee_id:s.employee_id,
+    date:s.date,
+    label:s.label+' (Kopie)',
+    from_time:s.from_time,
+    to_time:s.to_time,
+    city:s.city||'',
+    location:s.location||'',
+    function:s.function||''
+  };
+  Utils.showLoading('Duplizieren…');
+  await sb.from('shifts').insert(payload);
+  await Cache.reload();
+  App.renderShiftsTable();
+},
+
+  openBulkShiftModal(){
+  const sel=document.getElementById('bulkEmployee');
+  sel.innerHTML='';
+  Cache.employees.forEach(e=>{
+    const o=document.createElement('option');
+    o.value=e.id;
+    o.textContent=Utils.empName(e)+' ('+e.employee_id+')';
+    sel.appendChild(o);
+  });
+  document.getElementById('bulkFrom').value=Utils.todayStr();
+  document.getElementById('bulkTo').value=Utils.todayStr();
+  ['bulkLabel','bulkFunction','bulkCity','bulkLocation'].forEach(f=>document.getElementById(f).value='');
+  document.getElementById('bulkTimeFrom').value='';
+  document.getElementById('bulkTimeTo').value='';
+  document.getElementById('bulkPreview').classList.add('hidden');
+  document.getElementById('bulkShiftModal').classList.remove('hidden');
+},
+
+getBulkDates(){
+  const from=new Date(document.getElementById('bulkFrom').value+'T00:00:00');
+  const to=new Date(document.getElementById('bulkTo').value+'T00:00:00');
+  const days=['so','mo','di','mi','do','fr','sa'];
+  const checked=days.map((d,i)=>document.getElementById('bulk_'+d)?.checked||false);
+  const dates=[];
+  for(let d=new Date(from);d<=to;d.setDate(d.getDate()+1)){
+    if(checked[d.getDay()]) dates.push(d.toISOString().slice(0,10));
+  }
+  return dates;
+},
+
+previewBulk(){
+  const dates=App.getBulkDates();
+  const preview=document.getElementById('bulkPreview');
+  if(!dates.length){
+    preview.className='alert alert-danger';
+    preview.textContent='❌ Keine Tage im gewählten Zeitraum/Wochentage.';
+  }else{
+    preview.className='alert alert-success';
+    preview.innerHTML=`✅ Es werden <strong>${dates.length} Schichten</strong> erstellt:<br>${dates.slice(0,5).map(d=>Utils.formatDate(d)).join(', ')}${dates.length>5?` … +${dates.length-5} weitere`:''}`;
+  }
+  preview.classList.remove('hidden');
+},
+
+async saveBulkShifts(){
+  const empId=document.getElementById('bulkEmployee').value;
+  const label=document.getElementById('bulkLabel').value.trim();
+  const from=document.getElementById('bulkTimeFrom').value;
+  const to=document.getElementById('bulkTimeTo').value;
+  if(!empId||!label||!from||!to){alert('Pflichtfelder ausfüllen!');return;}
+  const dates=App.getBulkDates();
+  if(!dates.length){alert('Keine Tage ausgewählt!');return;}
+  if(!confirm(`${dates.length} Schichten erstellen?`))return;
+  const city=document.getElementById('bulkCity').value.trim();
+  const location=document.getElementById('bulkLocation').value.trim();
+  const func=document.getElementById('bulkFunction').value.trim();
+  const payload=dates.map(date=>({
+    employee_id:empId,date,label,from_time:from,to_time:to,city,location,function:func
+  }));
+  Utils.showLoading(`${dates.length} Schichten speichern…`);
+  await sb.from('shifts').insert(payload);
+  await Cache.reload();
+  App.closeModal('bulkShiftModal');
+  App.renderShiftsTable();
+  alert(`✅ ${dates.length} Schichten erfolgreich erstellt!`);
+},
 
   async deleteShift(id){
     if(!confirm(LANG.confirmDelete))return;

@@ -628,6 +628,7 @@ const App = {
       App.renderEmpDashboard();
     }
     App.startLiveClock();
+App.startShiftChecker();
   },
 
   logout(){
@@ -643,6 +644,47 @@ const App = {
   showLoginErr(msg){const el=document.getElementById('loginError');el.textContent=msg;el.style.display='block';},
   toggleDark(){App.darkMode=!App.darkMode;document.documentElement.setAttribute('data-theme',App.darkMode?'dark':'');localStorage.setItem('vw_dark',App.darkMode?'1':'0');},
 
+  startShiftChecker(){
+  const check=async()=>{
+    if(!Cache.employees.length) return;
+    const now=new Date();
+    const todayStr=Utils.todayStr();
+    const nowMins=now.getHours()*60+now.getMinutes();
+    const todayShifts=Cache.shifts.filter(s=>s.date===todayStr);
+    let changed=false;
+    for(const s of todayShifts){
+      const startMins=Utils.timeToMins(s.from_time);
+      const endMins=Utils.timeToMins(s.to_time);
+      const existingStamp=Cache.stamps.find(st=>st.employee_id===s.employee_id&&st.date===todayStr);
+      // Einstempeln: Schicht beginnt jetzt (±1 Min) und noch kein Stempel
+      if(Math.abs(nowMins-startMins)<=1&&!existingStamp){
+        await sb.from('stamps').insert({
+          employee_id:s.employee_id,
+          date:todayStr,
+          check_in:s.from_time,
+          check_out:null,
+          note:'Auto-Einstempelung',
+          manual:false,
+          confirmed:false,
+          confirmed_by:null
+        });
+        changed=true;
+      }
+      // Ausstempeln: Schicht endet jetzt (±1 Min) und Stempel ohne checkout
+      if(Math.abs(nowMins-endMins)<=1&&existingStamp&&!existingStamp.check_out){
+        await sb.from('stamps').update({check_out:s.to_time}).eq('id',existingStamp.id);
+        changed=true;
+      }
+    }
+    if(changed){
+      await Cache.reload();
+      if(App.isChef) App.renderChefOverview();
+      else App.renderEmpDashboard();
+    }
+  };
+  check();
+  setInterval(check,60000); // jede Minute prüfen
+},
   startLiveClock(){
     const upd=()=>{const now=new Date();const el=document.getElementById('liveClockDisplay');const dl=document.getElementById('liveDateDisplay');if(el)el.textContent=now.toTimeString().slice(0,8);if(dl)dl.textContent=now.toLocaleDateString('de-DE',{weekday:'long',day:'2-digit',month:'long',year:'numeric'});};
     upd();if(App.stampInterval)clearInterval(App.stampInterval);App.stampInterval=setInterval(upd,1000);
@@ -746,7 +788,8 @@ const App = {
       <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value">${emps.length}</div><div class="stat-label">Mitarbeiter</div></div>
       <div class="stat-card"><div class="stat-icon">✅</div><div class="stat-value">${present}</div><div class="stat-label">Anwesend heute</div></div>
       <div class="stat-card"><div class="stat-icon">⬜</div><div class="stat-value">${emps.length-present}</div><div class="stat-label">Abwesend</div></div>
-      <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value">${Cache.shifts.length}</div><div class="stat-label">Schichten gesamt</div></div>`;
+      <div class="stat-card"><div class="stat-icon">📅</div><div class="stat-value">${Cache.shifts.filter(s=>s.date===today).length}</div><div class="stat-label">Schichten (heute)</div></div>
+`;
     const tbody=document.querySelector('#chefOverviewTable tbody');
     if(!emps.length){tbody.innerHTML='<tr><td colspan="6" class="text-center text-muted">Keine Mitarbeiter.</td></tr>';return;}
     tbody.innerHTML=emps.map(e=>{

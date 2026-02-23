@@ -586,9 +586,12 @@ const App = {
       if(id===chefPw){
         App.currentUser={first_name:'Tim',last_name:'',isChef:true};
         App.isChef=true;
-        await Cache.reload();
-        App.afterLogin();
-        return;
+         await Cache.reload();
+  await App.autoStampFinishedShifts();
+  await Cache.reload();
+  App.afterLogin();
+  return;
+
       } else {
         App.showLoginErr('Ungültiges Passwort.');
         return;
@@ -598,7 +601,15 @@ const App = {
     Utils.showLoading('Anmelden…');
     const{data,error}=await sb.from('employees').select('*').ilike('first_name',name).eq('employee_id',id).single();
     Utils.hideLoading();
-    if(data&&!error){App.currentUser=data;App.isChef=false;await Cache.reload();App.afterLogin();}
+    if(data&&!error){
+  App.currentUser=data;
+  App.isChef=false;
+  await Cache.reload();
+  await App.autoStampFinishedShifts();
+  await Cache.reload();
+  App.afterLogin();
+}
+
     else{App.showLoginErr('Ungültige Anmeldedaten.');}
   },
 
@@ -696,6 +707,36 @@ const App = {
   },
 
   // ---- CHEF OVERVIEW ----
+  async autoStampFinishedShifts(){
+  const now=new Date();
+  const todayStr=Utils.todayStr();
+  const shifts=Cache.shifts.filter(s=>{
+    if(s.date > todayStr) return false;
+    if(s.date === todayStr){
+      const endMins=Utils.timeToMins(s.to_time);
+      const nowMins=now.getHours()*60+now.getMinutes();
+      if(nowMins < endMins) return false;
+    }
+    const exists=Cache.stamps.find(st=>
+      st.employee_id===s.employee_id &&
+      st.date===s.date
+    );
+    return !exists;
+  });
+  if(!shifts.length) return;
+  const payload=shifts.map(s=>({
+    employee_id:s.employee_id,
+    date:s.date,
+    check_in:s.from_time,
+    check_out:s.to_time,
+    note:'Automatisch aus Schichtplan',
+    manual:false,
+    confirmed:true,
+    confirmed_by:'System'
+  }));
+  await sb.from('stamps').insert(payload);
+  await Cache.reload();
+},
   renderChefOverview(){
     const today=Utils.todayStr(),month=Utils.monthStr();
     const emps=Cache.employees,stamps=Cache.stamps;
@@ -963,7 +1004,10 @@ async saveBulkShifts(){
       const gross=Utils.calcGross(s.check_in,s.check_out),net=Utils.calcNet(s.check_in,s.check_out),pause=gross-net;
       const target=(e?(e.target_hours||8):8)*60,ot=net-target;
       const shift=Cache.shifts.find(sh=>sh.employee_id===s.employee_id&&sh.date===s.date);
-      return`<tr><td>${e?Utils.empName(e):'–'}</td><td>${Utils.formatDate(s.date)}</td><td>${shift?shift.label:(s.note||'–')}</td><td>${s.check_in}</td><td>${s.check_out}</td><td>${Utils.minsToHStr(gross)}</td><td>${pause>0?Utils.minsToHStr(pause):'–'}</td><td><strong>${Utils.minsToHStr(net)}</strong></td><td>${Utils.minsToHStr(target)}</td><td class="${ot>=0?'overtime-positive':'overtime-negative'}">${ot>=0?'+':''}${Utils.minsToHStr(ot)}</td><td>${s.note||'–'}</td></tr>`;
+const autoBadge=s.confirmed&&s.confirmed_by==='System'?'<span class="badge badge-info" style="margin-left:4px">🤖 Auto</span>':'';
+const confirmedBadge=s.confirmed&&s.confirmed_by==='Tim'?'<span class="badge badge-success" style="margin-left:4px">✅ Tim</span>':'';
+return`<tr><td>${e?Utils.empName(e):'–'}</td><td>${Utils.formatDate(s.date)}</td><td>${shift?shift.label:(s.note||'–')}${autoBadge}${confirmedBadge}</td>
+<td>${Utils.formatDate(s.date)}</td><td>${shift?shift.label:(s.note||'–')}</td><td>${s.check_in}</td><td>${s.check_out}</td><td>${Utils.minsToHStr(gross)}</td><td>${pause>0?Utils.minsToHStr(pause):'–'}</td><td><strong>${Utils.minsToHStr(net)}</strong></td><td>${Utils.minsToHStr(target)}</td><td class="${ot>=0?'overtime-positive':'overtime-negative'}">${ot>=0?'+':''}${Utils.minsToHStr(ot)}</td><td>${s.note||'–'}</td></tr>`;
     }).join('');
   },
 
